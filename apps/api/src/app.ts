@@ -51,9 +51,10 @@ export function criarServidor(deps: DependenciasServidor) {
   const { apiToken } = deps;
   if (apiToken) {
     app.addHook('onRequest', async (request, reply) => {
-      if (request.url === '/health') return;
+      if (request.url.split('?')[0] === '/health') return;
       if (!tokenConfere(request.headers.authorization, apiToken)) {
-        await reply.code(401).send({ erro: 'Não autorizado' } satisfies ErroApi);
+        // em hook async, devolver o reply encerra a requisição aqui (o handler não roda)
+        return reply.code(401).send({ erro: 'Não autorizado' } satisfies ErroApi);
       }
     });
   }
