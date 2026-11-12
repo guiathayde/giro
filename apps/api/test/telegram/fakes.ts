@@ -1,28 +1,39 @@
-import { vi } from 'vitest';
+import { vi, type Mock } from 'vitest';
+import type { ServicosBot } from '../../src/modules/telegram/dependencias';
 
-const naoUsado = (nome: string) =>
-  vi.fn(() => Promise.reject(new Error(`${nome}: não usado neste teste`)));
+/** fake que falha se for chamado; o tipo é o da função real para o teste poder usar mockResolvedValue */
+function naoUsado<F extends (...args: never[]) => Promise<unknown>>(nome: string) {
+  return vi.fn(() =>
+    Promise.reject(new Error(`${nome}: não usado neste teste`)),
+  ) as unknown as Mock<F>;
+}
 
 /** serviços do bot que um teste não exercita; sobrescreva os que ele usa */
 export function servicosNaoUsados() {
   return {
     respostas: {
-      sugestaoAtiva: naoUsado('respostas.sugestaoAtiva'),
-      aceitarTudo: naoUsado('respostas.aceitarTudo'),
-      ajustar: naoUsado('respostas.ajustar'),
-      definirMotivo: naoUsado('respostas.definirMotivo'),
-      definirNota: naoUsado('respostas.definirNota'),
+      sugestaoAtiva: naoUsado<ServicosBot['respostas']['sugestaoAtiva']>('respostas.sugestaoAtiva'),
+      aceitarTudo: naoUsado<ServicosBot['respostas']['aceitarTudo']>('respostas.aceitarTudo'),
+      ajustar: naoUsado<ServicosBot['respostas']['ajustar']>('respostas.ajustar'),
+      definirMotivo: naoUsado<ServicosBot['respostas']['definirMotivo']>('respostas.definirMotivo'),
+      definirNota: naoUsado<ServicosBot['respostas']['definirNota']>('respostas.definirNota'),
     },
     registros: {
-      registrarPerda: naoUsado('registros.registrarPerda'),
-      registrarFalta: naoUsado('registros.registrarFalta'),
-      registrarContagem: naoUsado('registros.registrarContagem'),
+      registrarPerda: naoUsado<ServicosBot['registros']['registrarPerda']>(
+        'registros.registrarPerda',
+      ),
+      registrarFalta: naoUsado<ServicosBot['registros']['registrarFalta']>(
+        'registros.registrarFalta',
+      ),
+      registrarContagem: naoUsado<ServicosBot['registros']['registrarContagem']>(
+        'registros.registrarContagem',
+      ),
     },
-    inbox: { registrar: naoUsado('inbox.registrar') },
+    inbox: { registrar: naoUsado<ServicosBot['inbox']['registrar']>('inbox.registrar') },
     sessoes: {
       obter: vi.fn(() => Promise.resolve(null)),
-      salvar: naoUsado('sessoes.salvar'),
-      limpar: naoUsado('sessoes.limpar'),
+      salvar: naoUsado<ServicosBot['sessoes']['salvar']>('sessoes.salvar'),
+      limpar: naoUsado<ServicosBot['sessoes']['limpar']>('sessoes.limpar'),
     },
   };
 }
