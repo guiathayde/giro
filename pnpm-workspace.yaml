@@ -1,0 +1,10 @@
+packages:
+  - apps/*
+  - packages/*
+
+allowBuilds:
+  esbuild: true
+
+# Explícito para o comportamento local ser igual ao do Docker,
+# independente da config global do usuário.
+shamefullyHoist: false
