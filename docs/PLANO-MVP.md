@@ -1,6 +1,6 @@
 # Giro — Plano de implementação do MVP
 
-> Documento para ser usado como contexto no Claude Code. Copie para a raiz do repositório como `docs/PLANO-MVP.md` e referencie-o no `CLAUDE.md`.
+> **Status (12/11/2026):** Fases 0 a 4 implementadas e na `main`; falta o piloto (Fase 5). O checklist da seção 8 está atualizado. O que a implementação decidiu além deste plano está em [`DECISIONS.md`](DECISIONS.md); como rodar e usar, no [`README.md`](../README.md).
 
 ## 0. O que é este MVP (e o que não é)
 
@@ -41,41 +41,44 @@ Tudo isso precisa sair do painel sem planilha paralela.
 Monorepo simples, stack que a equipe já domina:
 
 - **Backend:** Node.js 22 + TypeScript, **Fastify**, **Drizzle ORM**, **PostgreSQL 16**, Zod para validação, `node-cron` para o job diário, Pino para logs.
-- **Frontend (painel do operador):** **React 19 + Vite + TypeScript**, React Router, TanStack Query para dados, **Tailwind + shadcn/ui** para componentes, react-hook-form + Zod nos formulários. SPA simples, sem SSR.
+- **Frontend (painel do operador):** **React 19 + Vite + TypeScript**, React Router, TanStack Query para dados, **Tailwind + shadcn/ui** para componentes, formulários com estado controlado + Zod (react-hook-form ficou de fora). SPA simples, sem SSR.
 - **Bot do Telegram:** **grammY** (TypeScript), rodando dentro do processo da API em modo long polling (sem webhook/HTTPS no início). Conversa 1:1 com cada dono; `chat_id` salvo na loja. Botões inline para aceitar/ajustar, upload de documento para o arquivo do PDV, comandos `/perda`, `/falta`, `/estoque`.
 - **Canal abstraído:** interface `MessagingChannel` com implementações `TelegramChannel` (bot) e `ManualChannel` (copiar/colar para WhatsApp), para que uma API de WhatsApp possa entrar depois sem reescrever.
-- **Infra:** `docker-compose` (postgres + api + web), `.env`, migrations com `drizzle-kit`. Deploy inicial em uma VPS barata ou Railway/Render; não otimizar.
-- **Testes:** Vitest (unitários no motor de sugestão, no parser de arquivos e no parser de respostas do bot), Supertest para rotas críticas. Nada de e2e agora.
+- **Infra:** monorepo com **pnpm workspaces**, `docker-compose` (postgres + api + web servido por nginx com proxy de `/api`), `.env`, migrations com `drizzle-kit` (aplicadas pela API ao subir). Deploy inicial em uma VPS barata ou Railway/Render; não otimizar.
+- **Testes:** Vitest (unitários no motor de sugestão, no parser de arquivos e no parser de respostas do bot), rotas testadas com `inject` do Fastify, e integração com Postgres de verdade em `pnpm test:int` (banco descartável por arquivo, incluindo um teste de ponta a ponta do fluxo do piloto). Nada de e2e de navegador.
 
 ```
 giro/
 ├── CLAUDE.md
+├── README.md
 ├── docs/
 │   ├── PLANO-MVP.md            (este arquivo)
 │   └── DECISIONS.md            (ADRs curtos)
 ├── docker-compose.yml
-├── package.json                (workspaces: apps/*, packages/*)
+├── package.json + pnpm-workspace.yaml   (workspaces: apps/*, packages/*)
 ├── apps/
-│   ├── api/                    Fastify + Drizzle
+│   ├── api/                    Fastify + Drizzle + bot
 │   │   ├── src/
-│   │   │   ├── server.ts
+│   │   │   ├── server.ts, app.ts, env.ts, datas.ts
 │   │   │   ├── db/ (schema.ts, migrations/, seed.ts)
 │   │   │   ├── modules/
-│   │   │   │   ├── stores/
-│   │   │   │   ├── items/
-│   │   │   │   ├── imports/      (upload + parsers)
-│   │   │   │   ├── suggestions/  (motor + geração de mensagem)
-│   │   │   │   ├── responses/    (feedback do dono)
-│   │   │   │   ├── losses/       (descarte)
-│   │   │   │   ├── messaging/    (MessagingChannel + telegram/ + manual/)
-│   │   │   │   ├── telegram/     (bot grammY: handlers, teclados, parser de respostas)
-│   │   │   │   └── metrics/
+│   │   │   │   ├── stores/       (lojas, itens, vínculo com o Telegram)
+│   │   │   │   ├── imports/      (upload + parsers + casamento com itens)
+│   │   │   │   ├── suggestions/  (engine.ts puro, mensagem, geração, envio, painel Hoje)
+│   │   │   │   ├── messaging/    (MessagingChannel, TelegramChannel, ManualChannel)
+│   │   │   │   ├── respostas/    (feedback do dono + compras geradas)
+│   │   │   │   ├── registros/    (perdas, faltas, contagens)
+│   │   │   │   ├── inbox/        (mensagens que o bot não entendeu)
+│   │   │   │   ├── calendario/   (feriados, feiras)
+│   │   │   │   ├── telegram/     (bot grammY: handlers, teclados, parseAdjustments, sessões)
+│   │   │   │   └── metricas/
 │   │   │   └── jobs/daily-suggestions.ts
-│   │   └── test/
+│   │   ├── scripts/            (gerador dos arquivos de exemplo do PDV)
+│   │   └── test/               (unitários, fixtures e integracao/)
 │   └── web/                    React + Vite
-│       └── src/ (routes/, features/{stores,items,imports,today,losses,metrics}, components/ui, lib/api.ts)
+│       └── src/ (features/{hoje,imports,itens,lojas,perdas,metricas,inbox,stores}, components/ui, lib/api.ts)
 └── packages/
-    └── shared/                 tipos e DTOs compartilhados (Zod schemas)
+    └── shared/                 enums e DTOs compartilhados (Zod schemas)
 ```
 
 ## 3. Modelo de dados (PostgreSQL)
@@ -111,6 +114,22 @@ stockouts     (id, store_id, item_id, reported_date date, note text)
 calendar_events (id, store_id null, event_date date, kind enum('holiday','fair','event'), label, demand_factor numeric default 1.0)
 ```
 
+Acréscimos da implementação (migrations `0001` e `0002`; detalhes em `DECISIONS.md`):
+
+```sql
+stores            + column_mapping jsonb, ignored_descriptions text[], auto_send bool default false
+items             + order_multiple numeric null      -- múltiplo do pedido; null = un 5, demais 1
+sales_imports     + file_content bytea               -- arquivo original, para reprocessar
+sales_import_rows (id, import_id, store_id, sale_date, description, normalized_description, product_code,
+                   quantity, revenue, line_count, item_id null, ignored bool)   -- fila "mapear"
+purchases         + suggestion_item_id unique        -- compra gerada pela resposta do dono
+suggestion_items  + position int, weak_estimate bool -- número na mensagem; estimativa fraca
+bot_sessions      (chat_id, store_id, mode enum('ajuste','nota'), suggestion_id, suggestion_item_id, updated_at)
+inbox_messages    (id, store_id null, telegram_chat_id, text, created_at, resolved_at)
+```
+
+IDs são `integer` identity em todas as tabelas.
+
 Regras:
 
 - Vendas são sempre **agregadas por dia e item**; o parser consolida linhas repetidas.
@@ -139,6 +158,8 @@ Roda uma vez por dia por loja (job às 05:30, antes do horário de CEASA) ou sob
 5. **Priorização da mensagem:** o dono não lê 40 itens. A mensagem lista **no máximo 12 itens**: primeiro os `risk`, depois os `order` ordenados por valor (`suggested_qty × avg_cost`), depois um resumo "demais itens: não repor hoje". Um link/"responder com _tudo_" para ver o restante.
 
 **Testes obrigatórios (Vitest):** série estável; item com feira na sexta; item sem histórico; estoque desconhecido; arredondamento por unidade; encalhe detectado; limite de 12 itens.
+
+Pontos que este plano não definia e a implementação decidiu: dia sem arquivo ≠ venda zero, renormalização dos pesos com 2–3 ocorrências, horizonte começando hoje, ordem encalhe → não repor → pedir, arredondamento para cima. Ver `DECISIONS.md` (Fases 2 a 4 — Motor).
 
 ## 5. Fluxos
 
@@ -208,6 +229,8 @@ GET    /stores/:id/telegram-link    gera/retorna o link t.me/<bot>?start=<code>
 GET    /inbox                       mensagens do bot não entendidas / pendências
 ```
 
+Acrescentadas na implementação (lista completa no `README.md`): `GET /stores`, `PATCH /stores/:id`, `PATCH /items/:id`, `PUT /stores/:id/column-mapping`, `GET /stores/:id/imports`, `GET /imports/:id`, `POST /imports/:id/reprocess`, `GET /today`, `POST /suggestions/:id/accept-all`, `GET`/`DELETE` de perdas, faltas e contagens, `POST /inbox/:id/resolve`, calendário (`/stores/:id/calendar-events`, `/calendar-events`) e `GET /metrics/channels`.
+
 Bot do Telegram (grammY, mesmo processo da API, long polling):
 
 ```
@@ -219,11 +242,13 @@ document             baixa arquivo → cria sales_import → roda parser
 /perda <item> <qty>  cria loss (match por alias; se ambíguo, pergunta com botões)
 /falta <item>        cria stockout
 /estoque <item> <qty> cria stock_count
+ok / tudo            aceita a sugestão do dia / lista todos os pedidos numerados
+texto livre          "não entendi" + registro na inbox
 ```
 
-Variáveis: `TELEGRAM_BOT_TOKEN` (do @BotFather), `TELEGRAM_POLLING=true`.
+Variáveis: `TELEGRAM_BOT_TOKEN` (do @BotFather), `TELEGRAM_POLLING=true`; job diário com `JOBS_ENABLED`, `SUGGESTION_CRON` (padrão `30 5 * * *`) e `JOBS_TIMEZONE`.
 
-Autenticação: um token estático por ambiente (`API_TOKEN`) no header. Multiusuário fica para depois.
+Autenticação: um token estático por ambiente (`API_TOKEN`) no header `Authorization: Bearer`, exigido em tudo menos `/health`; sem a variável, a API fica aberta (só para desenvolvimento). O painel pede o token uma vez. Multiusuário fica para depois.
 
 ## 7. Painel web (React) — telas
 
@@ -243,48 +268,51 @@ Cada fase termina com algo usável no piloto. Não avançar sem fechar a anterio
 
 ### Fase 0 — Fundação (1–2 dias)
 
-- [ ] Monorepo com workspaces, TypeScript strict, ESLint/Prettier.
-- [ ] `docker-compose` com Postgres; `apps/api` sobe com healthcheck; `apps/web` (Vite + React) sobe com Hello.
-- [ ] Criar o bot no @BotFather, salvar o token no `.env`; bot responde `/start` com "olá" (grammY, long polling).
-- [ ] Drizzle schema (seção 3) + primeira migration + seed com 1 loja fictícia e 20 itens de hortifruti.
-- [ ] `CLAUDE.md` com convenções (seção 9).
+- [x] Monorepo com workspaces, TypeScript strict, ESLint/Prettier.
+- [x] `docker-compose` com Postgres; `apps/api` sobe com healthcheck; `apps/web` (Vite + React) sobe com Hello.
+- [x] Criar o bot no @BotFather, salvar o token no `.env`; bot responde `/start` com "olá" (grammY, long polling).
+- [x] Drizzle schema (seção 3) + primeira migration + seed com 1 loja fictícia e 20 itens de hortifruti.
+- [x] `CLAUDE.md` com convenções (seção 9).
 
 ### Fase 1 — Ingestão de vendas (2–3 dias)
 
-- [ ] Parser CSV/XLSX com detecção de colunas por heurística + mapeamento manual salvo por loja (`column_mapping` em `stores`).
-- [ ] Normalização de descrição (uppercase, sem acento, sem "KG/UN") e match por `aliases`.
-- [ ] Fila de não mapeados e endpoint `/map`.
-- [ ] Bot recebe documento → cria import → responde resumo.
-- [ ] Tela "Importar vendas" (upload manual + fila de mapeamento). Testar com um export real de pelo menos 1 PDV usado em São Carlos (descobrir qual na entrevista).
+- [x] Parser CSV/XLSX com detecção de colunas por heurística + mapeamento manual salvo por loja (`column_mapping` em `stores`).
+- [x] Normalização de descrição (uppercase, sem acento, sem "KG/UN") e match por `aliases`.
+- [x] Fila de não mapeados e endpoint `/map`.
+- [x] Bot recebe documento → cria import → responde resumo.
+- [x] Tela "Importar vendas" (upload manual + fila de mapeamento).
+- [ ] Testar com um export real de pelo menos 1 PDV usado em São Carlos (descobrir qual na entrevista). Até lá os testes usam um arquivo sintético (`apps/api/test/fixtures/pdv/`).
 
 ### Fase 2 — Motor de sugestão (2–3 dias)
 
-- [ ] Implementar seção 4 em `modules/suggestions/engine.ts`, puro (sem I/O), com testes Vitest.
-- [ ] Job diário + endpoint `run`. Idempotência por (store, date).
-- [ ] Gerador de mensagem (template da seção 5.5) com limite de 12 itens.
-- [ ] `MessagingChannel`: `TelegramChannel` envia com botões inline; `ManualChannel` só marca como enviada.
-- [ ] Vinculação `/start <code>` e tela "Lojas" com o link.
-- [ ] Tela "Hoje" com status de envio e, para lojas manuais, botão copiar / `wa.me`.
+- [x] Implementar seção 4 em `modules/suggestions/engine.ts`, puro (sem I/O), com testes Vitest.
+- [x] Job diário + endpoint `run`. Idempotência por (store, date).
+- [x] Gerador de mensagem (template da seção 5.5) com limite de 12 itens.
+- [x] `MessagingChannel`: `TelegramChannel` envia com botões inline; `ManualChannel` só marca como enviada.
+- [x] Vinculação `/start <code>` (antecipada na Fase 1, para o bot saber de que loja é o arquivo) e tela "Lojas" com o link.
+- [x] Tela "Hoje" com status de envio e, para lojas manuais, botão copiar / `wa.me`.
 
 ### Fase 3 — Feedback do dono e perdas (2–3 dias)
 
-- [ ] Bot: callbacks aceitar/ajustar, modo ajuste com parser de linhas "N qty" (com testes), botões de motivo.
-- [ ] Bot: `/perda`, `/falta`, `/estoque` com match por alias e desambiguação por botões.
-- [ ] Inbox de mensagens não entendidas.
-- [ ] Painel: registro manual de resposta, descarte, falta e contagem (fallback).
-- [ ] Atualização do estoque estimado com compras informadas na resposta.
-- [ ] Telas "Perdas e faltas".
+- [x] Bot: callbacks aceitar/ajustar, modo ajuste com parser de linhas "N qty" (com testes), botões de motivo.
+- [x] Bot: `/perda`, `/falta`, `/estoque` com match por alias e desambiguação por botões.
+- [x] Inbox de mensagens não entendidas.
+- [x] Painel: registro manual de resposta, descarte, falta e contagem (fallback).
+- [x] Atualização do estoque estimado com compras informadas na resposta.
+- [x] Telas "Perdas e faltas".
 
 ### Fase 4 — Métricas (1–2 dias)
 
-- [ ] Endpoint `/metrics` com as métricas da seção 1.
-- [ ] Tela "Métricas" com comparação antes × durante (a semana "antes" é a primeira semana de dados, sem sugestão enviada).
+- [x] Endpoint `/metrics` com as métricas da seção 1.
+- [x] Tela "Métricas" com comparação antes × durante (a semana "antes" é a primeira semana de dados, sem sugestão enviada).
 
 ### Fase 5 — Piloto (3 semanas, sem código novo)
 
-- [ ] Cadastrar loja-piloto, itens (15–20) e aliases.
+- [ ] Subir em produção (VPS com HTTPS), com `API_TOKEN` definido, `JOBS_ENABLED=true` e backup do banco.
+- [ ] Cadastrar loja-piloto, itens (15–20) e aliases; vincular o Telegram do dono.
+- [ ] Contagem inicial de estoque dos itens antes do primeiro envio (sem contagem o estoque conta como 0 e todo item vira pedido).
 - [ ] Semana 1: só coletar vendas e perdas (baseline), não enviar sugestão.
-- [ ] Semanas 2–3: enviar sugestão todo dia, registrar respostas e perdas.
+- [ ] Semanas 2–3: ligar o envio automático da loja; enviar sugestão todo dia, registrar respostas e perdas.
 - [ ] Reunião semanal com o dono: 3 perguntas fixas (a sugestão fez sentido? o que ajustou e por quê? o que faltou?).
 - [ ] Ao final: relatório com as métricas e decisão continuar / pivotar.
 
@@ -297,7 +325,7 @@ Cada fase termina com algo usável no piloto. Não avançar sem fechar a anterio
 ## 9. Riscos e como o MVP lida com eles
 
 - **Export do PDV não existe ou é ruim** → fallback: planilha modelo (data, item, qtd) preenchida pelo dono ou pelo operador a partir da foto do fechamento. Descobrir o PDV na entrevista antes da Fase 1.
-- **Estoque estimado errado** → pedir contagem rápida de 5 itens-chave 2× por semana; mostrar "estimativa fraca" quando a contagem estiver velha.
+- **Estoque estimado errado** → pedir contagem rápida de 5 itens-chave 2× por semana (`/estoque` no bot ou tela Perdas e faltas); mostrar "estimativa fraca" quando a contagem estiver velha. Sem nenhuma contagem o estoque conta como 0 e o motor pede tudo: fazer a contagem inicial antes do primeiro envio.
 - **Dono não usa Telegram** → é a hipótese de canal; o fallback WhatsApp (copiar/colar) mantém o piloto rodando e a métrica diz se vale pagar a API do WhatsApp na v1. Instalar o Telegram com o dono na visita de onboarding reduz muito o atrito.
 - **Dono não responde** → métrica explícita; se < 60% de dias respondidos, o problema é o canal/formato, não o modelo — testar horário e tamanho da mensagem antes de mexer no motor.
 - **Mensagem vira "mais um relatório"** → limite de 12 itens e itens de risco primeiro; medir se os `risk` geram ação (promoção/descarte evitado).
