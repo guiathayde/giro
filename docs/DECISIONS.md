@@ -67,3 +67,49 @@ Implementado como está no plano, com estes acréscimos:
 11. **Limite de 10 MB por arquivo**, no painel e no bot. O tipo é decidido pela extensão (`.csv`, `.txt`, `.xlsx`, `.xls`).
 12. **O download do documento do Telegram usa uma URL que contém o token.** Ela nunca é logada nem gravada; o erro só mostra o status HTTP.
 13. **Ainda sem autenticação nas rotas.** O `API_TOKEN` da seção 6 não está em nenhuma fase; precisa entrar antes de expor a API fora da máquina.
+
+## 2026-11-12 — Fases 2 a 4
+
+### Base e organização
+
+1. **Uma migration (`0002`), só aditiva, para as três fases:**
+   - `stores.auto_send`, que é o envio automático, desligado por padrão;
+   - `items.order_multiple`;
+   - `suggestion_items.position` e `weak_estimate`;
+   - `purchases.suggestion_item_id`, único, para cada resposta gerar uma única compra;
+   - tabelas `bot_sessions` e `inbox_messages`.
+2. **Contratos antes do código.** Os DTOs Zod de todas as rotas novas ficam em `packages/shared`, e os módulos começaram como esqueletos com assinaturas fixas. A implementação foi feita em paralelo por agentes, cada um com arquivos exclusivos, e depois integrada.
+3. **Testes de integração com Postgres** (`pnpm test:int`). Cada arquivo cria um banco descartável `giro_teste_*`, aplica as migrations e apaga o banco no fim. `test/integracao/fluxo-completo.int.test.ts` cobre de ponta a ponta: vendas, sugestão, envio, ajuste, compra no estoque do dia seguinte, expiração e métricas.
+4. **`API_TOKEN` opcional.** Com ele, todas as rotas menos `/health` exigem `Authorization: Bearer`, e o painel pede o token uma vez. Sem ele a API funciona e avisa no log.
+5. **Rotina diária desligada por padrão** (`JOBS_ENABLED=false`). Ela só envia sozinha para loja com `auto_send`, canal telegram e chat vinculado. A reserva do envio é atômica (`UPDATE … WHERE sent_at IS NULL`), então dois processos não mandam a mesma sugestão duas vezes. `sent_at` e `responded_at` usam o mesmo relógio.
+
+### Motor (seção 4 do plano) — o que o plano não definia
+
+1. **Dia sem arquivo de vendas não é venda zero.** Só os dias cobertos por vendas importadas entram nas médias; nesses dias, item sem linha conta como 0.
+2. **Base:** com 2 ou 3 ocorrências do dia da semana, os pesos 0,4/0,3/0,2/0,1 são renormalizados. Com menos de 2, usa a média dos últimos 14 dias. Para avaliar o encalhe, a base de um dia passado usa só ocorrências anteriores a ele.
+3. **Horizonte** = de hoje até hoje + H − 1. A tendência fica em 1 quando falta dado em uma das janelas.
+4. **Ordem da decisão:** encalhe, depois não repor, depois pedir. O pedido é arredondado **para cima** ao múltiplo (un: 5; kg, maço e cx: 1). Se arredondar para 0, vira "não repor".
+5. **Estoque estimado** = última contagem (ou 0) + compras − vendas depois da contagem, nunca negativo. A estimativa é "fraca" sem contagem há mais de 7 dias. Sem contagem nenhuma o estoque fica 0, e todo item ativo com venda vira pedido; daí a importância das contagens.
+6. **Mensagem:** encalhes nunca são cortados; os pedidos ocupam o que sobra do limite de 12. Linhas com estimativa fraca levam " *" e uma nota de rodapé. O canal manual termina com "Responda _ok_…".
+
+### Respostas, bot e expiração
+
+1. **Compras pela resposta do dono:**
+   - aceito: compra a quantidade sugerida (só para pedidos);
+   - ajustado: compra a quantidade informada;
+   - ignorado ou 0: apaga a compra.
+
+   As compras entram no estoque estimado do dia seguinte.
+
+2. **`responded_at` guarda a primeira resposta**, para medir o tempo de resposta. A expiração marca os itens como `ignored` **sem** `responded_at`, e por isso não conta como resposta do dono nas métricas.
+3. **O bot confere a loja antes de gravar.** "Aceitar tudo" e o botão de motivo só valem para a sugestão ativa da loja do chat, porque o `callback_data` poderia apontar para outra loja. Sessões ("ajuste" e "nota") ficam no banco. Texto não entendido vai para a inbox, inclusive de chat não vinculado.
+4. **`parseAdjustments`** separa por linha e `;`, nunca por vírgula, porque "2 20,5" usa vírgula decimal. Se a mesma posição vier duas vezes, vale a última.
+
+### Métricas (seção 1 do plano)
+
+1. **"Antes"** = os 7 dias a partir da primeira venda importada, só se terminarem antes do primeiro envio. **"Durante"** = do primeiro envio até o fim do período, em média por semana.
+2. **Base das contas:**
+   - percentuais vão de 0 a 100;
+   - aceitos, ajustados e ignorados contam só os pedidos (`order`);
+   - a perda em kg soma só itens vendidos em kg;
+   - "dias com arquivo" é normalizado por semana, para a semana parcial não puxar a média para baixo.
