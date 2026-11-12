@@ -1,3 +1,5 @@
 pnpm-lock.yaml
 **/dist
 apps/api/src/db/migrations
+.claude
+backups

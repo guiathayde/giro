@@ -7,7 +7,8 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 export default defineConfig([
-  globalIgnores(['**/dist', '**/node_modules', 'apps/api/src/db/migrations']),
+  // .claude/ guarda worktrees de agentes (cópias do repositório): fora do lint
+  globalIgnores(['**/dist', '**/node_modules', 'apps/api/src/db/migrations', '.claude/**']),
 
   js.configs.recommended,
   tseslint.configs.recommendedTypeChecked,

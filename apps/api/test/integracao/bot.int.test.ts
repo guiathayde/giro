@@ -51,7 +51,7 @@ function texto(t: string): Update {
       text: t,
       ...(comando && { entities: [{ type: 'bot_command', offset: 0, length: comando.length }] }),
     },
-  } as Update;
+  };
 }
 function clique(data: string): Update {
   return {
@@ -63,7 +63,7 @@ function clique(data: string): Update {
       data,
       message: { message_id: 100, date: 1_794_000_000, chat, text: 'mensagem' },
     },
-  } as Update;
+  };
 }
 
 describe('bot com serviços reais', () => {
@@ -79,11 +79,14 @@ describe('bot com serviços reais', () => {
 
   const interceptar = (api: Api) =>
     api.config.use((_prev, metodo, payload) => {
-      chamadas.push({ metodo, payload: payload as Record<string, unknown> });
+      chamadas.push({ metodo, payload });
       return Promise.resolve({ ok: true, result: { message_id: 100 } as never });
     });
   const enviadas = () => chamadas.filter((c) => c.metodo === 'sendMessage');
-  const ultimaResposta = () => String(enviadas().at(-1)?.payload.text ?? '');
+  const ultimaResposta = () => {
+    const texto = enviadas().at(-1)?.payload.text;
+    return typeof texto === 'string' ? texto : '';
+  };
 
   beforeAll(async () => {
     banco = await criarBancoDeTeste();

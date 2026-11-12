@@ -1,6 +1,6 @@
 // Sugestões: gerar (motor + mensagem), buscar, enviar pelo canal da loja, painel "Hoje" e rotina diária.
 import type { Canal, GerarSugestao, PainelHoje, Sugestao } from '@giro/shared';
-import { and, asc, count, eq, inArray, isNull, lt, max, gt, sql } from 'drizzle-orm';
+import { and, asc, count, eq, gt, inArray, isNull, lt, max } from 'drizzle-orm';
 import type { Db } from '../../db/client';
 import {
   inboxMessages,
