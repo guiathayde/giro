@@ -1,7 +1,6 @@
 import { z } from 'zod';
+import { dataIsoSchema as dataIso } from './comum';
 import { ORIGENS_IMPORTACAO, STATUS_IMPORTACAO } from './enums';
-
-const dataIso = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 /** Colunas que o parser usou, com o nome como aparece no arquivo. */
 export const colunasDetectadasSchema = z.object({

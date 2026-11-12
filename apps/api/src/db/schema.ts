@@ -73,6 +73,8 @@ export const stores = pgTable('stores', {
     .array()
     .notNull()
     .default(sql`'{}'::text[]`),
+  // fase 2: o job diário só envia sozinho quando ligado (semana de baseline do piloto fica desligada)
+  autoSend: boolean('auto_send').notNull().default(false),
   createdAt: criadoEm(),
 });
 
@@ -89,6 +91,8 @@ export const items = pgTable(
     avgCost: quantidade('avg_cost'),
     avgPrice: quantidade('avg_price'),
     active: boolean('active').notNull().default(true),
+    // fase 2: múltiplo de arredondamento do pedido; null = padrão da unidade (un: 5, demais: 1)
+    orderMultiple: quantidade('order_multiple'),
     // nomes como aparecem no PDV ("TOMATE KG", "Tomate Italiano")
     aliases: text('aliases')
       .array()
@@ -203,6 +207,10 @@ export const purchases = pgTable(
     quantity: quantidade('quantity').notNull(),
     unitCost: quantidade('unit_cost'),
     source: origemCompraEnum('source').notNull(),
+    // fase 3: compra que veio da resposta do dono a um item da sugestão (uma por item)
+    suggestionItemId: integer('suggestion_item_id')
+      .unique()
+      .references(() => suggestionItems.id, { onDelete: 'cascade' }),
   },
   (t) => [index('purchases_store_item_idx').on(t.storeId, t.itemId, t.purchaseDate)],
 );
@@ -237,6 +245,10 @@ export const suggestionItems = pgTable(
       .notNull()
       .references(() => items.id),
     action: acaoSugestaoEnum('action').notNull(),
+    // fase 2: número do pedido na mensagem ("1. Tomate — 40 kg"); null para não repor/encalhe
+    position: integer('position'),
+    // fase 2: estoque estimado sem contagem há mais de 7 dias
+    weakEstimate: boolean('weak_estimate').notNull().default(false),
     suggestedQty: quantidade('suggested_qty').notNull(),
     forecastQty: quantidade('forecast_qty').notNull(),
     estimatedStock: quantidade('estimated_stock'),
@@ -300,4 +312,37 @@ export const calendarEvents = pgTable(
     demandFactor: numeric('demand_factor', { mode: 'number' }).notNull().default(1.0),
   },
   (t) => [index('calendar_events_date_idx').on(t.eventDate)],
+);
+
+// fase 3: estado da conversa com o dono (modo ajuste, nota de motivo "outro")
+export const modoSessaoEnum = pgEnum('bot_session_mode', ['ajuste', 'nota']);
+
+export const botSessions = pgTable('bot_sessions', {
+  chatId: bigint('chat_id', { mode: 'number' }).primaryKey(),
+  storeId: integer('store_id')
+    .notNull()
+    .references(() => stores.id, { onDelete: 'cascade' }),
+  mode: modoSessaoEnum('mode').notNull(),
+  suggestionId: integer('suggestion_id')
+    .notNull()
+    .references(() => suggestions.id, { onDelete: 'cascade' }),
+  suggestionItemId: integer('suggestion_item_id').references(() => suggestionItems.id, {
+    onDelete: 'cascade',
+  }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// fase 3: mensagens do bot que ele não entendeu, para o operador agir (seção 5.2)
+export const inboxMessages = pgTable(
+  'inbox_messages',
+  {
+    id: id(),
+    // null quando o chat ainda não está vinculado a uma loja
+    storeId: integer('store_id').references(() => stores.id, { onDelete: 'cascade' }),
+    telegramChatId: bigint('telegram_chat_id', { mode: 'number' }).notNull(),
+    text: text('text').notNull(),
+    createdAt: criadoEm(),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  },
+  (t) => [index('inbox_messages_open_idx').on(t.resolvedAt, t.createdAt)],
 );

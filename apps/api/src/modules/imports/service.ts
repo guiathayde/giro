@@ -8,16 +8,13 @@ import type {
   ResumoImportacao,
 } from '@giro/shared';
 import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm';
-import type { Db } from '../../db/client';
+import type { Db, Executor } from '../../db/client';
 import { items, salesImportRows, salesImports, stores } from '../../db/schema';
 import { naoEncontrado, requisicaoInvalida } from '../../erros';
 import { lerTabela } from './arquivo';
 import { agruparVendas, criarIndiceItens, type GrupoVenda } from './casamento';
 import { normalizarDescricao } from './normalizacao';
 import { parsearVendas, type ResultadoParse } from './parser';
-
-type Transacao = Parameters<Parameters<Db['transaction']>[0]>[0];
-type Executor = Db | Transacao;
 
 export interface EntradaImportacao {
   lojaId: number;

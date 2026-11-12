@@ -1,11 +1,8 @@
 // Handlers do bot: finos, só traduzem Telegram ↔ serviços de domínio.
-import { Bot, type BotConfig, type Context } from 'grammy';
-import type { ResumoImportacao } from '@giro/shared';
+import { Bot } from 'grammy';
 import { extensaoAceita } from '../imports/arquivo';
 import { TAMANHO_MAXIMO_ARQUIVO } from '../imports/limites';
-import type { EntradaImportacao } from '../imports/service';
-import type { LojaDoChat } from '../stores/service';
-import type { BaixarArquivo } from './arquivos';
+import type { DependenciasBot } from './dependencias';
 import {
   MENSAGEM_ARQUIVO_GRANDE,
   MENSAGEM_BOAS_VINDAS,
@@ -17,20 +14,6 @@ import {
   mensagemJaVinculado,
   mensagemVinculado,
 } from './mensagens';
-
-export interface DependenciasBot {
-  lojas: {
-    vincularChat: (codigo: string, chatId: number) => Promise<LojaDoChat | null>;
-    lojaDoChat: (chatId: number) => Promise<LojaDoChat | null>;
-  };
-  importacoes: {
-    importar: (entrada: EntradaImportacao) => Promise<ResumoImportacao>;
-  };
-  baixarArquivo: BaixarArquivo;
-  /** erros inesperados; o dono sempre recebe uma resposta mesmo assim */
-  registrarErro: (err: unknown, contexto: string) => void;
-  config?: BotConfig<Context>;
-}
 
 export function criarBot(token: string, deps: DependenciasBot) {
   const bot = new Bot(token, deps.config);

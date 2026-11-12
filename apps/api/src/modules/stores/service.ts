@@ -24,14 +24,33 @@ export interface LojaDoChat {
   nomeDono: string;
 }
 
-function paraDto(loja: typeof stores.$inferSelect): Loja {
+export function lojaParaDto(loja: typeof stores.$inferSelect): Loja {
   return {
     id: loja.id,
     nome: loja.name,
     nomeDono: loja.ownerName,
+    whatsapp: loja.whatsappPhone,
     canal: loja.channel,
     telegramVinculado: loja.telegramChatId !== null,
+    envioAutomatico: loja.autoSend,
+    sistemaPdv: loja.pdvSystem,
+    fusoHorario: loja.timezone,
     mapeamentoColunas: loja.columnMapping ?? null,
+  };
+}
+
+export function itemParaDto(item: typeof items.$inferSelect): Item {
+  return {
+    id: item.id,
+    lojaId: item.storeId,
+    nome: item.name,
+    unidade: item.unit,
+    vidaUtilDias: item.shelfLifeDays,
+    custoMedio: item.avgCost,
+    precoMedio: item.avgPrice,
+    multiploPedido: item.orderMultiple,
+    ativo: item.active,
+    aliases: item.aliases,
   };
 }
 
@@ -45,7 +64,7 @@ export function criarServicoLojas(db: Db) {
   return {
     async listar(): Promise<Loja[]> {
       const lojas = await db.select().from(stores).orderBy(asc(stores.name));
-      return lojas.map(paraDto);
+      return lojas.map(lojaParaDto);
     },
 
     async itens(lojaId: number): Promise<Item[]> {
@@ -55,14 +74,7 @@ export function criarServicoLojas(db: Db) {
         .from(items)
         .where(eq(items.storeId, lojaId))
         .orderBy(asc(items.name));
-      return linhas.map((i) => ({
-        id: i.id,
-        nome: i.name,
-        unidade: i.unit,
-        vidaUtilDias: i.shelfLifeDays,
-        ativo: i.active,
-        aliases: i.aliases,
-      }));
+      return linhas.map(itemParaDto);
     },
 
     async salvarMapeamentoColunas(
@@ -75,7 +87,7 @@ export function criarServicoLojas(db: Db) {
         .set({ columnMapping: mapeamento })
         .where(eq(stores.id, lojaId))
         .returning();
-      return paraDto(loja!);
+      return lojaParaDto(loja!);
     },
 
     /** Gera (uma vez) o código de vinculação e devolve o link t.me/<bot>?start=<código>. */

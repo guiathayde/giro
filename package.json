@@ -13,6 +13,7 @@
     "db:migrate": "pnpm --filter @giro/api run db:migrate",
     "db:seed": "pnpm --filter @giro/api run db:seed",
     "test": "pnpm --recursive run test",
+    "test:int": "pnpm --filter @giro/api run test:int",
     "typecheck": "pnpm --recursive run typecheck",
     "lint": "eslint . && prettier --check . && pnpm run typecheck",
     "format": "prettier --write ."
