@@ -15,7 +15,6 @@ import {
   MENSAGEM_PEDE_NOTA,
   MENSAGEM_PEDIDO_ACEITO,
   MENSAGEM_PEDIDO_ENCERRADO,
-  MENSAGEM_PEDIDO_OUTRA_LOJA,
   MENSAGEM_SEM_PEDIDO_ABERTO,
   mensagemItemAjustado,
   mensagemLinhasNaoEntendidas,
@@ -45,11 +44,13 @@ export async function aoAceitar(ctx: Context, deps: DependenciasBot, cb: Callbac
     await ctx.reply(MENSAGEM_CHAT_SEM_LOJA);
     return;
   }
-  const sugestao = await deps.respostas.aceitarTudo(cb.sugestaoId);
-  if (sugestao.lojaId !== loja.id) {
-    await ctx.reply(MENSAGEM_PEDIDO_OUTRA_LOJA);
+  // confere ANTES de gravar: o callback_data poderia apontar para a sugestão de outra loja
+  const ativa = await deps.respostas.sugestaoAtiva(loja.id);
+  if (!ativa || ativa.id !== cb.sugestaoId) {
+    await ctx.reply(MENSAGEM_PEDIDO_ENCERRADO);
     return;
   }
+  await deps.respostas.aceitarTudo(ativa.id);
   await tirarTeclado(ctx);
   await deps.sessoes.limpar(chatId);
   await ctx.reply(MENSAGEM_PEDIDO_ACEITO);
@@ -88,6 +89,12 @@ export async function aoEscolherMotivo(
     await ctx.reply(MENSAGEM_CHAT_SEM_LOJA);
     return;
   }
+  // o item precisa ser da sugestão ativa desta loja
+  const ativa = await deps.respostas.sugestaoAtiva(loja.id);
+  if (!ativa?.itens.some((i) => i.id === cb.itemSugestaoId)) {
+    await ctx.reply(MENSAGEM_PEDIDO_ENCERRADO);
+    return;
+  }
   const item = await deps.respostas.definirMotivo(cb.itemSugestaoId, cb.motivo);
   try {
     await ctx.editMessageText(mensagemItemAjustado(item, cb.motivo));
@@ -96,14 +103,11 @@ export async function aoEscolherMotivo(
   }
   if (cb.motivo !== 'other') return;
 
-  const sessao = await deps.sessoes.obter(chatId);
-  const sugestaoId = sessao?.sugestaoId ?? (await deps.respostas.sugestaoAtiva(loja.id))?.id;
-  if (sugestaoId === undefined) return;
   await deps.sessoes.salvar({
     chatId,
     lojaId: loja.id,
     modo: 'nota',
-    sugestaoId,
+    sugestaoId: ativa.id,
     itemSugestaoId: cb.itemSugestaoId,
   });
   await ctx.reply(MENSAGEM_PEDE_NOTA);

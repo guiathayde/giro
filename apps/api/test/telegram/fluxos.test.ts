@@ -10,6 +10,7 @@ import {
   MENSAGEM_CHAT_SEM_LOJA,
   MENSAGEM_ERRO_GENERICO,
   MENSAGEM_NAO_ENTENDI,
+  MENSAGEM_PEDIDO_ENCERRADO,
 } from '../../src/modules/telegram/mensagens';
 import { servicosNaoUsados } from './fakes';
 import { itemFalso, itemSugestaoFalso, sugestaoFalsa } from './fabricas';
@@ -150,16 +151,16 @@ describe('callback aceitar', () => {
     expect(respostas()).toEqual(['Anotado! Pedido aceito.']);
   });
 
-  it('recusa sugestão de outra loja', async () => {
+  it('recusa sugestão que não é a ativa desta loja, sem gravar nada', async () => {
     const { bot, deps, respostas, chamadasDe } = criar();
-    deps.respostas.aceitarTudo.mockResolvedValue({ ...SUGESTAO, lojaId: 99 });
 
-    await bot.handleUpdate(clique({ tipo: 'aceitar', sugestaoId: 7 }));
+    await bot.handleUpdate(clique({ tipo: 'aceitar', sugestaoId: 99 }));
 
     expect(chamadasDe('answerCallbackQuery')).toHaveLength(1);
+    expect(deps.respostas.aceitarTudo).not.toHaveBeenCalled();
     expect(chamadasDe('editMessageReplyMarkup')).toHaveLength(0);
     expect(deps.sessoes.limpar).not.toHaveBeenCalled();
-    expect(respostas()).toEqual(['Esse pedido não é desta loja.']);
+    expect(respostas()).toEqual([MENSAGEM_PEDIDO_ENCERRADO]);
   });
 
   it('chat sem loja: responde o callback e explica', async () => {
@@ -302,6 +303,13 @@ describe('texto em modo ajuste', () => {
 });
 
 describe('callback motivo', () => {
+  it('recusa item que não é da sugestão ativa da loja', async () => {
+    const { bot, deps, respostas } = criar();
+    await bot.handleUpdate(clique({ tipo: 'motivo', itemSugestaoId: 9999, motivo: 'price' }));
+    expect(deps.respostas.definirMotivo).not.toHaveBeenCalled();
+    expect(respostas()).toEqual([MENSAGEM_PEDIDO_ENCERRADO]);
+  });
+
   const ajustado: ItemSugestao = { ...TOMATE, resposta: 'adjusted', quantidadeResposta: 35 };
 
   it('salva o motivo e mostra o motivo escolhido na mensagem, sem teclado', async () => {

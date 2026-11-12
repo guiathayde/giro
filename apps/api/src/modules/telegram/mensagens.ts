@@ -78,7 +78,6 @@ export const MENSAGEM_NAO_ENTENDI =
 export const MENSAGEM_PEDIDO_ACEITO = 'Anotado! Pedido aceito.';
 export const MENSAGEM_PEDIDO_ENCERRADO = 'Esse pedido não está mais aberto.';
 export const MENSAGEM_SEM_PEDIDO_ABERTO = 'Não tem nenhum pedido aberto agora.';
-export const MENSAGEM_PEDIDO_OUTRA_LOJA = 'Esse pedido não é desta loja.';
 
 export const MENSAGEM_AJUSTE_FINALIZADO = 'Pronto! O que você não mexeu fica como sugerido.';
 export const MENSAGEM_AJUSTE_AJUDA =
