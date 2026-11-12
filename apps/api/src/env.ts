@@ -12,6 +12,16 @@ const envSchema = z.object({
     .optional()
     .transform((valor) => valor || undefined),
   TELEGRAM_POLLING: z.stringbool().default(true),
+  /** token estático exigido em todas as rotas, menos /health (seção 6). Vazio = sem autenticação */
+  API_TOKEN: z
+    .string()
+    .trim()
+    .optional()
+    .transform((valor) => valor || undefined),
+  /** job diário de sugestões (gera, expira e envia). Desligado por padrão */
+  JOBS_ENABLED: z.stringbool().default(false),
+  SUGGESTION_CRON: z.string().default('30 5 * * *'),
+  JOBS_TIMEZONE: z.string().default('America/Sao_Paulo'),
 });
 
 export type Env = z.infer<typeof envSchema>;

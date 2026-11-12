@@ -6,15 +6,23 @@ O plano completo, com hipóteses, métricas, modelo de dados e fases, está em [
 
 ## Status
 
-| Fase                          | Situação                                                                                 |
-| ----------------------------- | ---------------------------------------------------------------------------------------- |
-| 0 — Fundação                  | ✅ monorepo, Docker, schema + migrations + seed, bot respondendo `/start`                |
-| 1 — Ingestão de vendas        | ✅ parser CSV/XLSX/XLS, fila de mapeamento, bot recebe o arquivo, tela "Importar vendas" |
-| 2 — Motor de sugestão         | próxima. Da Fase 2 já existe a vinculação da loja ao bot (`/start <código>`)             |
-| 3 — Feedback do dono e perdas | —                                                                                        |
-| 4 — Métricas                  | —                                                                                        |
+| Fase                          | Situação                                                                                                    |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| 0 — Fundação                  | ✅ monorepo, Docker, schema + migrations + seed, bot respondendo `/start`                                   |
+| 1 — Ingestão de vendas        | ✅ parser CSV/XLSX/XLS, fila de mapeamento, bot recebe o arquivo, tela "Importar vendas"                    |
+| 2 — Motor de sugestão         | ✅ motor heurístico, mensagem diária, envio por Telegram ou manual, rotina das 5h30, telas Hoje/Lojas/Itens |
+| 3 — Feedback do dono e perdas | ✅ aceitar/ajustar com motivo no bot, `/perda` `/falta` `/estoque`, inbox, registro manual, tela de perdas  |
+| 4 — Métricas                  | ✅ métricas da seção 1 do plano (antes × durante) e tela de métricas                                        |
+| 5 — Piloto                    | sem código novo: cadastrar a loja-piloto, baseline de 1 semana, ligar o envio automático                    |
 
 Pendente da Fase 1: testar com um export real de PDV de São Carlos. O arquivo de exemplo é sintético (ver `docs/DECISIONS.md`).
+
+## Antes do piloto
+
+1. **Autenticação:** defina `API_TOKEN` no `.env` antes de expor a API fora da sua máquina. O painel pede o token uma vez e guarda no navegador.
+2. **Rotina diária:** `JOBS_ENABLED=true` liga o job das 5h30 (`SUGGESTION_CRON`, fuso `JOBS_TIMEZONE`). Ele expira as sugestões sem resposta, gera a do dia e envia sozinho só para lojas com **envio automático** ligado (tela Lojas), canal Telegram e chat vinculado.
+3. **Baseline:** na primeira semana deixe o envio automático desligado e só importe vendas e registre perdas (Fase 5 do plano). As métricas usam essa semana como "antes".
+4. **Um processo por token:** só um processo pode fazer long polling e rodar o job com o mesmo token; não deixe `pnpm dev` e o container ligados juntos com `JOBS_ENABLED=true`.
 
 ## Stack
 
@@ -62,9 +70,20 @@ Só um processo pode fazer long polling com o mesmo token do Telegram. Se o cont
 ## Bot do Telegram
 
 1. Crie o bot no [@BotFather](https://t.me/BotFather) e coloque o token em `TELEGRAM_BOT_TOKEN` no `.env`. Sem token a API sobe normalmente, com o bot desativado (`GET /health` mostra `bot: desativado`).
-2. Gere o link de vinculação da loja: `curl localhost:3333/stores/1/telegram-link`, que devolve `https://t.me/<bot>?start=<código>`.
-3. O dono abre o link e toca em **Iniciar**. O chat fica ligado à loja e o canal dela passa a ser `telegram`.
-4. O dono manda o arquivo de vendas exportado do PDV como **documento** (`.csv`, `.txt`, `.xlsx` ou `.xls`, até 10 MB). O bot importa e responde com um resumo, por exemplo: _"Recebi! 717 linhas de venda de 12/10 a 08/11. 5 itens que não reconheci (o operador vai mapear)."_
+2. Na tela **Lojas**, toque em **Gerar link** e mande o link `t.me/<bot>?start=<código>` ao dono. Ao tocar em **Iniciar**, o chat fica ligado à loja e o canal dela passa a ser `telegram`.
+3. O dono conversa com o bot assim:
+
+| O dono faz                                              | O bot                                                                                                  |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| toca **Aceitar tudo** na sugestão do dia                | marca todos os itens como aceitos e registra as compras                                                |
+| toca **Ajustar** e manda `1 35` (uma linha por item)    | ajusta o pedido 1 para 35 e pergunta o motivo com botões; os não citados ficam aceitos; `ok` encerra   |
+| motivo **outro**                                        | pede uma frase curta e guarda como nota                                                                |
+| `ok` / `tudo`                                           | aceita a sugestão do dia / lista todos os pedidos numerados                                            |
+| `/perda mamão 6`, `/falta banana`, `/estoque tomate 15` | registra descarte, falta ou contagem de hoje; se o nome bater com mais de um item, pergunta com botões |
+| manda o arquivo do PDV como documento                   | importa e responde o resumo (`.csv`, `.txt`, `.xlsx`, `.xls`, até 10 MB)                               |
+| qualquer outro texto                                    | responde "Não entendi…" e guarda na **Inbox** do painel para o operador                                |
+
+Lojas sem Telegram usam o fallback manual: na tela **Hoje** o operador copia a mensagem (ou abre o `wa.me`), marca como enviada e registra as respostas do dono item a item.
 
 ## Importação de vendas
 
@@ -89,7 +108,8 @@ Eles são gerados por `apps/api/scripts/gerar-exemplos-pdv.ts`. Não edite à m�
 | Comando                                | O que faz                                                     |
 | -------------------------------------- | ------------------------------------------------------------- |
 | `pnpm dev`                             | API e web em modo desenvolvimento                             |
-| `pnpm test`                            | testes (Vitest)                                               |
+| `pnpm test`                            | testes unitários (Vitest)                                     |
+| `pnpm test:int`                        | integração com Postgres (precisa do `postgres` no ar)         |
 | `pnpm lint`                            | ESLint + Prettier (`--check`) + typecheck de todos os pacotes |
 | `pnpm format`                          | formata com Prettier                                          |
 | `pnpm db:generate`                     | gera migration a partir de `apps/api/src/db/schema.ts`        |
@@ -97,26 +117,29 @@ Eles são gerados por `apps/api/scripts/gerar-exemplos-pdv.ts`. Não edite à m�
 | `pnpm db:seed`                         | cria a loja fictícia e os 20 itens (idempotente)              |
 | `pnpm --filter @giro/api fixtures:pdv` | regenera os arquivos de exemplo do PDV                        |
 
-Antes de concluir qualquer mudança: `pnpm lint && pnpm test`.
+Antes de concluir qualquer mudança: `pnpm lint && pnpm test` (e `pnpm test:int` se mexer em serviço com banco).
 
 ## API
 
-Toda entrada é validada com Zod. Os DTOs ficam em `packages/shared`.
+Toda entrada é validada com Zod. Os DTOs ficam em `packages/shared`. Com `API_TOKEN` definido, todas as rotas menos `/health` exigem `Authorization: Bearer <token>`.
 
-| Rota                             | Descrição                                                        |
-| -------------------------------- | ---------------------------------------------------------------- |
-| `GET /health`                    | status da API, do banco e do bot                                 |
-| `GET /stores`                    | lojas                                                            |
-| `GET /stores/:id/items`          | catálogo da loja                                                 |
-| `PUT /stores/:id/column-mapping` | salva (ou limpa, com `null`) o mapeamento de colunas do PDV      |
-| `GET /stores/:id/telegram-link`  | código e link de vinculação com o bot                            |
-| `POST /stores/:id/imports`       | upload do arquivo (multipart, campo `arquivo`)                   |
-| `GET /stores/:id/imports`        | importações da loja                                              |
-| `GET /imports/:id`               | detalhe: resumo, não reconhecidos, colunas e prévia              |
-| `POST /imports/:id/map`          | associa descrições a itens (`itemId`) ou ignora (`itemId: null`) |
-| `POST /imports/:id/reprocess`    | reprocessa o arquivo guardado                                    |
-
-Ainda não há autenticação (o `API_TOKEN` da seção 6 do plano). Não exponha a API fora da sua máquina antes disso.
+| Rota                                                                                      | Descrição                                                                 |
+| ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `GET /health`                                                                             | status da API, do banco e do bot                                          |
+| `GET /stores`, `POST /stores`, `PATCH /stores/:id`                                        | lojas (inclui canal e envio automático)                                   |
+| `GET /stores/:id/items`, `POST /stores/:id/items`, `PATCH /items/:id`                     | catálogo (unidade, vida útil, custo, preço, múltiplo do pedido, apelidos) |
+| `GET /stores/:id/telegram-link`                                                           | código e link de vinculação com o bot                                     |
+| `PUT /stores/:id/column-mapping`                                                          | mapeamento de colunas do PDV (`null` limpa)                               |
+| `POST /stores/:id/imports`, `GET /stores/:id/imports`, `GET /imports/:id`                 | importação de vendas (multipart, campo `arquivo`)                         |
+| `POST /imports/:id/map`, `POST /imports/:id/reprocess`                                    | mapear descrições (`itemId` ou `null` = ignorar) / reprocessar            |
+| `GET /today?date=`                                                                        | painel Hoje: sugestão de cada loja e pendências                           |
+| `POST /stores/:id/suggestions/run`                                                        | gera a sugestão do dia (idempotente; `refazer` só em rascunho)            |
+| `GET /stores/:id/suggestions/:date`, `POST /suggestions/:id/send`                         | busca / envia pelo canal da loja                                          |
+| `POST /suggestion-items/:id/response`, `POST /suggestions/:id/accept-all`                 | resposta do dono registrada pelo operador                                 |
+| `POST`/`GET /stores/:id/losses`, `/stockouts`, `/stock-counts` + `DELETE`                 | descarte, falta e contagem de estoque                                     |
+| `GET /stores/:id/calendar-events`, `POST /calendar-events`, `DELETE /calendar-events/:id` | feriados e feiras (fator de demanda)                                      |
+| `GET /inbox`, `POST /inbox/:id/resolve`                                                   | mensagens que o bot não entendeu e arquivos recebidos                     |
+| `GET /stores/:id/metrics?from&to`, `GET /metrics/channels`                                | métricas do piloto                                                        |
 
 ## Estrutura
 
@@ -126,10 +149,18 @@ apps/
     src/db/            schema, migrations, seed
     src/modules/
       imports/         leitura do arquivo, parser, casamento com itens, serviço e rotas
+      suggestions/     motor (engine.ts, puro), mensagem diária, geração, envio e painel Hoje
+      messaging/       MessagingChannel: TelegramChannel e ManualChannel
+      respostas/       resposta do dono (aceitar/ajustar/ignorar) e compras geradas
+      registros/       perdas, faltas e contagens de estoque
+      inbox/           mensagens que o bot não entendeu
+      calendario/      feriados e feiras
+      metricas/        métricas do piloto (agregações puras + consultas)
       stores/          lojas, catálogo, vinculação com o Telegram
-      telegram/        bot (handlers finos), textos para o dono, download de arquivos
+      telegram/        bot (handlers finos), parseAdjustments, textos para o dono, sessões
+    src/jobs/          rotina diária das 5h30 (node-cron)
     scripts/           gerador dos arquivos de exemplo do PDV
-    test/              testes e fixtures
+    test/              testes unitários, fixtures e test/integracao (Postgres)
   web/                 painel do operador (React + Vite), servido por nginx no Docker
 packages/
   shared/              enums do banco e DTOs (Zod) usados pela API e pelo painel

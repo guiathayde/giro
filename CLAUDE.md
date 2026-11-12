@@ -14,7 +14,7 @@ Node 22 + TypeScript strict, Fastify, Drizzle ORM, PostgreSQL 16, Zod, Vitest, g
 - Migrations via drizzle-kit; nunca editar migration já aplicada.
 - Validação de entrada com Zod em todas as rotas; DTOs em packages/shared.
 - Commits pequenos, mensagem em português no imperativo.
-- Antes de concluir uma tarefa: `pnpm lint && pnpm test` verdes.
+- Antes de concluir uma tarefa: `pnpm lint && pnpm test` verdes; se mexer em SQL/serviço com banco, `pnpm test:int` também (precisa do postgres no ar).
 
 ## Comandos
 
@@ -26,6 +26,7 @@ pnpm db:generate              # gera migration a partir de apps/api/src/db/schem
 pnpm db:migrate
 pnpm db:seed                  # idempotente
 pnpm test
+pnpm test:int                 # integração com Postgres (banco descartável por arquivo de teste)
 pnpm lint                     # eslint + prettier --check + typecheck
 pnpm --filter @giro/api fixtures:pdv  # regenera os arquivos de exemplo do PDV (test/fixtures/pdv)
 

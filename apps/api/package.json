@@ -11,7 +11,8 @@
     "db:seed": "node --env-file-if-exists=../../.env --import tsx src/db/seed.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "fixtures:pdv": "tsx scripts/gerar-exemplos-pdv.ts"
+    "fixtures:pdv": "tsx scripts/gerar-exemplos-pdv.ts",
+    "test:int": "vitest run --config vitest.int.config.ts"
   },
   "dependencies": {
     "@fastify/multipart": "^10.1.8",
@@ -20,6 +21,7 @@
     "drizzle-orm": "^0.45.4",
     "fastify": "^5.12.8",
     "grammy": "^1.46.0",
+    "node-cron": "^4.6.0",
     "pg": "^8.23.1",
     "tsx": "^4.23.15",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",

@@ -6,7 +6,8 @@ import { agruparVendas, criarIndiceItens } from '../../src/modules/imports/casam
 import { parsearVendas } from '../../src/modules/imports/parser';
 import type { EntradaImportacao } from '../../src/modules/imports/service';
 import type { LojaDoChat } from '../../src/modules/stores/service';
-import { criarBot, type DependenciasBot } from '../../src/modules/telegram/bot';
+import { criarBot } from '../../src/modules/telegram/bot';
+import type { DependenciasBot } from '../../src/modules/telegram/dependencias';
 import {
   MENSAGEM_BOAS_VINDAS,
   MENSAGEM_CHAT_SEM_LOJA,
@@ -20,6 +21,7 @@ import {
   CATALOGO,
   lerFixture,
 } from '../imports/fixtures';
+import { servicosNaoUsados } from './fakes';
 
 const botInfo: UserFromGetMe = {
   id: 42,
@@ -78,9 +80,11 @@ function importarSemBanco(entrada: EntradaImportacao): Promise<ResumoImportacao>
 function criarBotDeTeste(opcoes: { lojaVinculada?: LojaDoChat | null; arquivo?: Uint8Array } = {}) {
   const chamadas: { metodo: string; payload: Record<string, unknown> }[] = [];
   const deps = {
+    ...servicosNaoUsados(),
     lojas: {
       vincularChat: vi.fn((codigo: string) => Promise.resolve(codigo === 'ABC234' ? LOJA : null)),
       lojaDoChat: vi.fn(() => Promise.resolve(opcoes.lojaVinculada ?? null)),
+      itens: vi.fn(() => Promise.resolve([])),
     },
     importacoes: { importar: vi.fn(importarSemBanco) },
     baixarArquivo: vi.fn(() => Promise.resolve(opcoes.arquivo ?? new Uint8Array())),
@@ -154,12 +158,6 @@ describe('bot — /start', () => {
     const { bot, respostas } = criarBotDeTeste();
     await bot.handleUpdate(comando('/start XXXXXX'));
     expect(respostas()).toEqual([MENSAGEM_CODIGO_INVALIDO]);
-  });
-
-  it('não responde a texto que não é comando nem documento', async () => {
-    const { bot, chamadas } = criarBotDeTeste({ lojaVinculada: LOJA });
-    await bot.handleUpdate({ ...base, message: { ...base.message, text: 'bom dia' } });
-    expect(chamadas).toHaveLength(0);
   });
 });
 

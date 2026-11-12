@@ -9,3 +9,7 @@ export function criarDb(databaseUrl: string) {
 }
 
 export type Db = ReturnType<typeof criarDb>['db'];
+
+export type Transacao = Parameters<Parameters<Db['transaction']>[0]>[0];
+/** banco ou transação: funções de leitura aceitam os dois */
+export type Executor = Db | Transacao;

@@ -1,28 +1,63 @@
+import { timingSafeEqual } from 'node:crypto';
 import multipart from '@fastify/multipart';
 import type { ErroApi, Health, StatusBot } from '@giro/shared';
 import Fastify, { type FastifyError, type FastifyServerOptions } from 'fastify';
 import { ZodError } from 'zod';
 import { ErroHttp } from './erros';
+import { rotasCalendario, type ServicoCalendarioRotas } from './modules/calendario/routes';
 import { TAMANHO_MAXIMO_ARQUIVO } from './modules/imports/limites';
 import { rotasImportacoes, type ServicoImportacoesRotas } from './modules/imports/routes';
+import { rotasInbox, type ServicoInboxRotas } from './modules/inbox/routes';
+import { rotasMetricas, type ServicoMetricasRotas } from './modules/metricas/routes';
+import { rotasRegistros, type ServicoRegistrosRotas } from './modules/registros/routes';
+import { rotasRespostas, type ServicoRespostasRotas } from './modules/respostas/routes';
 import { rotasLojas, type ServicoLojasRotas } from './modules/stores/routes';
+import { rotasSugestoes, type ServicoSugestoesRotas } from './modules/suggestions/routes';
+
+/** serviços de domínio; cada um é opcional para os testes montarem só o que usam */
+export interface ServicosServidor {
+  lojas: ServicoLojasRotas;
+  importacoes: ServicoImportacoesRotas;
+  sugestoes: ServicoSugestoesRotas;
+  respostas: ServicoRespostasRotas;
+  registros: ServicoRegistrosRotas;
+  inbox: ServicoInboxRotas;
+  calendario: ServicoCalendarioRotas;
+  metricas: ServicoMetricasRotas;
+}
 
 export interface DependenciasServidor {
   logger?: FastifyServerOptions['logger'];
   verificarBanco: () => Promise<void>;
   statusBot: () => StatusBot;
   usernameBot?: () => string | undefined;
-  /** rotas de domínio; ausentes nos testes que só olham o /health */
-  servicos?: {
-    lojas: ServicoLojasRotas;
-    importacoes: ServicoImportacoesRotas;
-  };
+  /** token exigido em `Authorization: Bearer <token>` em tudo menos /health; ausente = sem autenticação */
+  apiToken?: string;
+  servicos?: Partial<ServicosServidor>;
+}
+
+function tokenConfere(recebido: string | undefined, esperado: string): boolean {
+  if (!recebido?.startsWith('Bearer ')) return false;
+  const a = Buffer.from(recebido.slice('Bearer '.length));
+  const b = Buffer.from(esperado);
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 export function criarServidor(deps: DependenciasServidor) {
   const app = Fastify({ logger: deps.logger ?? false });
 
   app.register(multipart, { limits: { fileSize: TAMANHO_MAXIMO_ARQUIVO, files: 1 } });
+
+  const { apiToken } = deps;
+  if (apiToken) {
+    app.addHook('onRequest', async (request, reply) => {
+      if (request.url.split('?')[0] === '/health') return;
+      if (!tokenConfere(request.headers.authorization, apiToken)) {
+        // em hook async, devolver o reply encerra a requisição aqui (o handler não roda)
+        return reply.code(401).send({ erro: 'Não autorizado' } satisfies ErroApi);
+      }
+    });
+  }
 
   app.setErrorHandler((err: FastifyError, request, reply) => {
     if (err instanceof ZodError) {
@@ -57,11 +92,15 @@ export function criarServidor(deps: DependenciasServidor) {
     return reply.code(dbOk ? 200 : 503).send(corpo);
   });
 
-  if (deps.servicos) {
-    const { lojas, importacoes } = deps.servicos;
-    rotasLojas(app, lojas, deps.usernameBot ?? (() => undefined));
-    rotasImportacoes(app, importacoes);
-  }
+  const s = deps.servicos ?? {};
+  if (s.lojas) rotasLojas(app, s.lojas, deps.usernameBot ?? (() => undefined));
+  if (s.importacoes) rotasImportacoes(app, s.importacoes);
+  if (s.sugestoes) rotasSugestoes(app, s.sugestoes);
+  if (s.respostas) rotasRespostas(app, s.respostas);
+  if (s.registros) rotasRegistros(app, s.registros);
+  if (s.inbox) rotasInbox(app, s.inbox);
+  if (s.calendario) rotasCalendario(app, s.calendario);
+  if (s.metricas) rotasMetricas(app, s.metricas);
 
   return app;
 }

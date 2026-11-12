@@ -11,3 +11,6 @@ export class ErroHttp extends Error {
 
 export const naoEncontrado = (mensagem: string) => new ErroHttp(404, mensagem);
 export const requisicaoInvalida = (mensagem: string) => new ErroHttp(400, mensagem);
+
+/** esqueleto de método ainda não implementado */
+export const naoImplementado = (o_que: string) => new ErroHttp(501, `${o_que}: não implementado`);

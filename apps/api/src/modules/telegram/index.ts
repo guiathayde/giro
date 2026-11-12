@@ -1,7 +1,8 @@
 import type { FastifyBaseLogger } from 'fastify';
 import type { StatusBot } from '@giro/shared';
 import { criarBaixarArquivo } from './arquivos';
-import { criarBot, type DependenciasBot } from './bot';
+import { criarBot } from './bot';
+import type { ServicosBot } from './dependencias';
 
 export interface BotTelegram {
   status: () => StatusBot;
@@ -14,7 +15,7 @@ interface OpcoesBot {
   token: string | undefined;
   polling: boolean;
   log: FastifyBaseLogger;
-  servicos: Pick<DependenciasBot, 'lojas' | 'importacoes'>;
+  servicos: ServicosBot;
 }
 
 /**
