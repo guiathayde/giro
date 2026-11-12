@@ -113,3 +113,21 @@ Implementado como está no plano, com estes acréscimos:
    - aceitos, ajustados e ignorados contam só os pedidos (`order`);
    - a perda em kg soma só itens vendidos em kg;
    - "dias com arquivo" é normalizado por semana, para a semana parcial não puxar a média para baixo.
+
+## 2026-11-12 — Produção
+
+1. **VPS com Docker Compose.** O `docker-compose.prod.yml` sobrepõe o compose de desenvolvimento.
+   - O Caddy é o único serviço exposto e faz o HTTPS automático.
+   - Postgres, API e web ficam só na rede interna, com `ports: !reset []`.
+   - `POSTGRES_PASSWORD`, `API_TOKEN` e `DOMINIO` são obrigatórios: sem eles o compose falha.
+   - `JOBS_ENABLED` vem ligado.
+   - Todos os serviços têm `restart: unless-stopped` e rotação de logs.
+   - Webhook do Telegram só na Fase 6; o long polling funciona sem abrir porta.
+2. **O nginx do web resolve `api` pelo DNS do Docker a cada 10 s** (`resolver 127.0.0.11` e `proxy_pass` com variável). Sem isso ele guardava o IP do container, e quando a API era recriada com outro IP, num deploy, o painel respondia 502 até alguém reiniciar o web.
+3. **Backup com `pg_dump --format=custom`** e retenção local (padrão de 14 arquivos), com cópia opcional para fora da máquina via rclone. A restauração para a API durante o `pg_restore --clean --single-transaction`.
+4. **Testado localmente** num projeto Docker separado, com portas 8081/8443 e `DOMINIO=localhost`:
+   - HTTPS, redirecionamento 308 e token exigido;
+   - nenhuma porta publicada além do Caddy;
+   - upload e job pelo cron;
+   - backup com retenção e restauração de dados apagados;
+   - recriação da API com outro IP.

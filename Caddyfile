@@ -1,0 +1,15 @@
+# HTTPS automático (Let's Encrypt) para o painel e a API (/api/* → nginx do web → api).
+# O domínio vem da variável DOMINIO; as portas 80 e 443 precisam estar abertas para a internet.
+# Com DOMINIO=localhost o Caddy usa um certificado local (só para testar).
+{$DOMINIO} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	reverse_proxy web:80
+}

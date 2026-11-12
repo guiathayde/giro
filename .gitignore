@@ -9,3 +9,6 @@ coverage/
 
 # worktrees dos agentes
 .claude/worktrees/
+
+# backups do banco (ops/backup-banco.sh)
+backups/

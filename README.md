@@ -67,6 +67,41 @@ pnpm dev                           # api :3333 + web :5173 (o Vite faz proxy de 
 
 Só um processo pode fazer long polling com o mesmo token do Telegram. Se o container `api` estiver rodando com o token, use `TELEGRAM_POLLING=false pnpm dev` ou pare o container.
 
+## Produção
+
+Para o piloto basta uma VPS pequena (2 GB de RAM) com Docker, um domínio apontando para ela e as portas 22, 80 e 443 liberadas. O `docker-compose.prod.yml` se sobrepõe ao compose de desenvolvimento:
+
+- só o **Caddy** fica exposto, com HTTPS automático (Let's Encrypt) e cabeçalhos de segurança;
+- Postgres, API e web ficam só na rede interna;
+- senha do banco, `API_TOKEN` e domínio são obrigatórios: sem eles o compose nem sobe;
+- o job diário vem ligado (`JOBS_ENABLED=true`);
+- todos os serviços reiniciam sozinhos (`restart: unless-stopped`) e os logs têm rotação (10 MB × 5).
+
+```sh
+git clone <repo> /opt/giro && cd /opt/giro
+cp .env.example .env
+# preencha: DOMINIO, POSTGRES_PASSWORD (openssl rand -hex 24), API_TOKEN (openssl rand -hex 32),
+#           TELEGRAM_BOT_TOKEN
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+- **Não rode o seed em produção**, porque ele cria a loja fictícia. Cadastre a loja real pelo painel, em `https://<DOMINIO>`.
+- **Uma instância por token do Telegram:** o long polling e o job não podem rodar em dois lugares. Crie um segundo bot no @BotFather para desenvolvimento.
+- **Atualizar:** faça backup, depois `git pull` e o mesmo comando de subida. As migrations rodam sozinhas.
+- **Monitorar:** aponte um monitor de uptime para `https://<DOMINIO>/api/health` procurando `"bot":"ativo"`. O `/health` responde 200 mesmo com o bot fora, por isso o monitor precisa conferir o conteúdo. A rotina diária deixa no log a linha `rotina diária de sugestões concluída`; para ver, use `docker compose -f docker-compose.yml -f docker-compose.prod.yml logs api`.
+
+### Backup
+
+- `ops/backup-banco.sh` faz `pg_dump` em formato custom para `backups/`, confere se o arquivo é legível e guarda os últimos 14 (`BACKUP_MANTER`).
+- Com `RCLONE_DESTINO` definido, também copia o arquivo para fora da máquina, por exemplo para o Backblaze B2 ou o S3.
+- `ops/restaurar-banco.sh <arquivo>` restaura: para a API, substitui os dados e sobe a API de novo. Ele pede confirmação.
+
+Cron diário na VPS (`crontab -e`):
+
+```
+15 3 * * * cd /opt/giro && ops/backup-banco.sh >> backups/backup.log 2>&1
+```
+
 ## Bot do Telegram
 
 1. Crie o bot no [@BotFather](https://t.me/BotFather) e coloque o token em `TELEGRAM_BOT_TOKEN` no `.env`. Sem token a API sobe normalmente, com o bot desativado (`GET /health` mostra `bot: desativado`).
