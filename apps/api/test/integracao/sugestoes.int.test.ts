@@ -269,8 +269,11 @@ describe('serviço de sugestões no Postgres', () => {
 
   it('falha do canal desfaz a reserva, devolve 502 sem vazar o token e permite tentar de novo', async () => {
     const { lojaId } = await lojaComVendas(db, 'telegram');
+    // token falso montado em tempo de execução: um literal com formato de token do Telegram no
+    // código dispara o secret scanning do GitHub
+    const tokenFalso = `${'1'.repeat(9)}:${'x'.repeat(35)}`;
     let falhar: Error | null = new Error(
-      'Network request failed: https://api.telegram.org/bot123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw/sendMessage',
+      `Network request failed: https://api.telegram.org/bot${tokenFalso}/sendMessage`,
     );
     const { canal, enviados } = canalTelegramFake({ falhar: () => falhar });
     const servico = criarServico(db, canal);
@@ -280,7 +283,7 @@ describe('serviço de sugestões no Postgres', () => {
     expect(erro).toBeInstanceOf(ErroHttp);
     expect((erro as ErroHttp).status).toBe(502);
     expect((erro as ErroHttp).message).toContain('Falha ao enviar pelo Telegram');
-    expect((erro as ErroHttp).message).not.toContain('AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw');
+    expect((erro as ErroHttp).message).not.toContain(tokenFalso);
     const [linha] = await db.select().from(suggestions).where(eq(suggestions.id, gerada.id));
     expect(linha?.sentAt).toBeNull();
     expect(linha?.status).toBe('draft');
