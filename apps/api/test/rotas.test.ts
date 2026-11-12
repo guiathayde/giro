@@ -39,6 +39,10 @@ function criarApp() {
     itens: vi.fn(),
     salvarMapeamentoColunas: vi.fn(),
     linkTelegram: vi.fn(),
+    criar: vi.fn(),
+    editar: vi.fn(),
+    criarItem: vi.fn(),
+    editarItem: vi.fn(),
   };
   const app = criarServidor({
     verificarBanco: async () => {},
