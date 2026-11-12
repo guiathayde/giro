@@ -5,6 +5,6 @@ export class ManualChannel implements MessagingChannel {
   readonly canal = 'manual' as const;
 
   enviarSugestao(_envio: EnvioSugestao): Promise<ResultadoEnvio> {
-    return Promise.reject(new Error('ManualChannel.enviarSugestao: não implementado'));
+    return Promise.resolve({ telegramMessageId: null });
   }
 }
