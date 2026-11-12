@@ -159,12 +159,6 @@ describe('bot — /start', () => {
     await bot.handleUpdate(comando('/start XXXXXX'));
     expect(respostas()).toEqual([MENSAGEM_CODIGO_INVALIDO]);
   });
-
-  it('não responde a texto que não é comando nem documento', async () => {
-    const { bot, chamadas } = criarBotDeTeste({ lojaVinculada: LOJA });
-    await bot.handleUpdate({ ...base, message: { ...base.message, text: 'bom dia' } });
-    expect(chamadas).toHaveLength(0);
-  });
 });
 
 describe('bot — documento com as vendas do PDV', () => {

@@ -1,18 +1,37 @@
 // Estado da conversa do bot (modo ajuste, esperando nota) guardado no banco (bot_sessions).
+import { eq, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client';
+import { botSessions } from '../../db/schema';
 import type { SessaoBot } from './dependencias';
 
 export function criarServicoSessoes(db: Db) {
-  void db;
   return {
-    obter(_chatId: number): Promise<SessaoBot | null> {
-      return Promise.reject(new Error('sessoes.obter: não implementado'));
+    async obter(chatId: number): Promise<SessaoBot | null> {
+      const [s] = await db.select().from(botSessions).where(eq(botSessions.chatId, chatId));
+      if (!s) return null;
+      return {
+        chatId: s.chatId,
+        lojaId: s.storeId,
+        modo: s.mode,
+        sugestaoId: s.suggestionId,
+        itemSugestaoId: s.suggestionItemId,
+      };
     },
-    salvar(_sessao: SessaoBot): Promise<void> {
-      return Promise.reject(new Error('sessoes.salvar: não implementado'));
+    async salvar(sessao: SessaoBot): Promise<void> {
+      const valores = {
+        storeId: sessao.lojaId,
+        mode: sessao.modo,
+        suggestionId: sessao.sugestaoId,
+        suggestionItemId: sessao.itemSugestaoId,
+        updatedAt: sql`now()`,
+      };
+      await db
+        .insert(botSessions)
+        .values({ chatId: sessao.chatId, ...valores })
+        .onConflictDoUpdate({ target: botSessions.chatId, set: valores });
     },
-    limpar(_chatId: number): Promise<void> {
-      return Promise.reject(new Error('sessoes.limpar: não implementado'));
+    async limpar(chatId: number): Promise<void> {
+      await db.delete(botSessions).where(eq(botSessions.chatId, chatId));
     },
   };
 }
