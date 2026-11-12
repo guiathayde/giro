@@ -161,10 +161,12 @@ function Cartao({
 function Conteudo({ m }: { m: MetricasLoja }) {
   const { adesao, tempoResposta } = m;
   const semanasArquivo = m.arquivos;
+  // dias por semana normalizado: semana parcial no começo/fim do período não puxa a média para baixo
+  const diasNoPeriodo = semanasArquivo.reduce((s, a) => s + a.diasNoPeriodo, 0);
   const mediaArquivos =
-    semanasArquivo.length === 0
+    diasNoPeriodo === 0
       ? null
-      : semanasArquivo.reduce((s, a) => s + a.diasComVendas, 0) / semanasArquivo.length;
+      : (semanasArquivo.reduce((s, a) => s + a.diasComVendas, 0) / diasNoPeriodo) * 7;
   const medianaOk =
     tempoResposta.medianaMinutos === null ? null : tempoResposta.medianaMinutos < 120;
   const inicio = m.inicioSugestoes;
@@ -209,7 +211,7 @@ function Conteudo({ m }: { m: MetricasLoja }) {
         <Cartao
           titulo="Dias com arquivo de vendas por semana"
           valor={mediaArquivos === null ? '—' : numero(mediaArquivos, 1)}
-          detalhe="Média das semanas do período"
+          detalhe="Média por semana no período"
           meta="5 dias ou mais"
           abaixo={mediaArquivos === null ? null : mediaArquivos < 5}
         />
@@ -254,8 +256,12 @@ function Conteudo({ m }: { m: MetricasLoja }) {
           />
           <GraficoBarras
             titulo="Dias com arquivo de vendas"
-            barras={m.arquivos.map((a) => ({ semana: a.semana, valor: a.diasComVendas }))}
-            formatar={(v) => `${numero(v, 0)} de 7`}
+            barras={m.arquivos.map((a) => ({
+              semana: a.semana,
+              valor: a.diasComVendas,
+              rotulo: `${a.diasComVendas} de ${a.diasNoPeriodo}`,
+            }))}
+            formatar={(v) => numero(v, 0)}
             inicioSugestoes={inicio}
             maximo={7}
             meta={5}

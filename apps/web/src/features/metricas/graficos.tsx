@@ -6,6 +6,8 @@ export interface Barra {
   /** segunda-feira da semana (AAAA-MM-DD) */
   semana: string;
   valor: number;
+  /** texto do valor, quando não basta `formatar` (ex.: "3 de 4") */
+  rotulo?: string;
 }
 
 function somarDias(iso: string, dias: number): string {
@@ -56,7 +58,7 @@ export function GraficoBarras({
               <li
                 key={b.semana}
                 className="grid grid-cols-[4.5rem_1fr_5rem] items-center gap-2 text-sm"
-                aria-label={`Semana de ${dataBr(b.semana)}: ${formatar(b.valor)}${marca ? ', início das sugestões' : ''}`}
+                aria-label={`Semana de ${dataBr(b.semana)}: ${b.rotulo ?? formatar(b.valor)}${marca ? ', início das sugestões' : ''}`}
               >
                 <span className="text-muted-foreground tabular-nums">
                   {dataBr(b.semana).slice(0, 5)}
@@ -76,7 +78,9 @@ export function GraficoBarras({
                     />
                   )}
                 </span>
-                <span className="text-right font-medium tabular-nums">{formatar(b.valor)}</span>
+                <span className="text-right font-medium tabular-nums">
+                  {b.rotulo ?? formatar(b.valor)}
+                </span>
                 {marca && (
                   <Badge variant="secondary" className="col-span-3 w-fit">
                     Sugestões começaram nesta semana

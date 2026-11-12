@@ -92,7 +92,8 @@ export function criarServicoRegistros(db: Db, deps: { agora?: () => Date } = {})
           itemId: item.id,
           lossDate: novo.data ?? hojeNoFuso(loja.timezone, agora()),
           quantity: novo.quantidade,
-          estValue: item.avgCost === null ? null : novo.quantidade * item.avgCost,
+          estValue:
+            item.avgCost === null ? null : Math.round(novo.quantidade * item.avgCost * 100) / 100,
           reason: novo.motivo,
           note: novo.nota ?? null,
         })
