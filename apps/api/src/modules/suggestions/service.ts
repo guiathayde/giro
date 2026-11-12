@@ -189,10 +189,11 @@ export function criarServicoSugestoes(db: Db, deps: DependenciasSugestoes) {
     }
     if (!canal) throw requisicaoInvalida('Canal de envio indisponível');
 
-    // reserva atômica: só um processo passa daqui
+    // reserva atômica (WHERE sent_at IS NULL): só um processo passa daqui. O horário vem do mesmo
+    // relógio de responded_at, senão o tempo de resposta mistura relógios
     const reservada = await db
       .update(suggestions)
-      .set({ sentAt: sql`now()`, status: 'sent' })
+      .set({ sentAt: agora(), status: 'sent' })
       .where(and(eq(suggestions.id, sugestaoId), isNull(suggestions.sentAt)))
       .returning({ id: suggestions.id });
     if (reservada.length === 0) return carregarSugestao(db, sugestaoId);
